@@ -1,21 +1,17 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./App.css";
+import Video from "./Video";
+import HomePage from "./Home";
 
 function App() {
   return (
-    <div className="app-root">
-      <main className="center">
-        <h1>Create Any Video</h1>
-
-        <div className="input-wrapper">
-          <input
-            type="text"
-            placeholder="Ask anything"
-            className="chat-input"
-          />
-        </div>
-      </main>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/video" element={<Video />} />
+      </Routes>
+    </BrowserRouter>
   );
-};
+}
 
 export default App;
