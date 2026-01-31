@@ -2,8 +2,26 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #0f0f0f;
+  position: relative;
   color: #e5e5e5;
+}
+
+.video-page-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url('/looping_bg.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: brightness(0.4) saturate(0.7) contrast(1.1) hue-rotate(-8deg);
+  box-shadow: inset 0 0 80px rgba(0, 0, 30, 0.6), 0 -2px 30px rgba(0, 255, 231, 0.08);
+}
+
+.video-page .video-nav,
+.video-page .video-main {
+  position: relative;
+  z-index: 1;
 }
 
 .video-nav {

@@ -21,6 +21,7 @@ export default function HomePage() {
   
     return (
       <div className="home-page-root">
+        <div className="home-page-bg" aria-hidden="true" />
         <main className="center">
           <h1>Create Any Video</h1>
   

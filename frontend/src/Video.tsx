@@ -9,6 +9,7 @@ export default function Video() {
 
   return (
     <div className="video-page">
+      <div className="video-page-bg" aria-hidden="true" />
       <nav className="video-nav">
         <Link to="/" className="video-nav-create">
           Create another video
