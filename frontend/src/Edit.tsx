@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Edit.css';
 
@@ -8,8 +8,33 @@ const SLOT_VW = 30; // 28vw building + 2vw gap
 
 function Edit() {
   const [exiting, setExiting] = useState(false);
-  const [centerIndex, setCenterIndex] = useState(1);
+  const [centerIndex, setCenterIndex] = useState(0);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setCenterIndex((c) => (c - 1 + VIDEOS.length) % VIDEOS.length);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setCenterIndex((c) => (c + 1) % VIDEOS.length);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    videoRefs.current.forEach((video, i) => {
+      if (video) {
+        if (i === centerIndex) video.play();
+        else video.pause();
+      }
+    });
+  }, [centerIndex]);
 
   const handleDone = () => {
     setExiting(true);
@@ -35,7 +60,15 @@ function Edit() {
         <div className="video-strip" style={{ transform: `translateX(${(1 - centerIndex) * SLOT_VW}vw)` }}>
           {VIDEOS.map((src, i) => (
             <div className={`building ${i === centerIndex ? 'building-center' : ''}`} key={src}>
-              <video className="city-video" src={`/videos/${src}`} controls autoPlay loop muted playsInline />
+              <video
+                ref={(el) => { videoRefs.current[i] = el; }}
+                className="city-video"
+                src={`/videos/${src}`}
+                controls
+                {...(i === centerIndex ? { autoPlay: true } : {})}
+                loop
+                playsInline
+              />
             </div>
           ))}
         </div>
