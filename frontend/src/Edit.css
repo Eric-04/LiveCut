@@ -1,0 +1,108 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  min-height: 100vh;
+  background: linear-gradient(to top, #232526 0%, #414345 100%);
+  position: relative;
+}
+
+.city-skyline {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 32vh;
+  z-index: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+.city-skyline svg {
+  width: 100vw;
+  height: 100%;
+  display: block;
+}
+
+.video-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100vw;
+}
+
+.video-title {
+  color: #00ffe7;
+  font-size: 2.5rem;
+  margin-bottom: 2rem;
+  text-shadow: 0 2px 16px #00ffe7cc, 0 1px 0 #232526;
+}
+
+.video-container {
+  display: flex;
+  gap: 2vw;
+  justify-content: center;
+  align-items: flex-end;
+  position: relative;
+  z-index: 1;
+}
+
+.building {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 28vw;
+  max-width: 400px;
+  min-width: 220px;
+  height: 44vh;
+  margin-bottom: 0;
+}
+
+.building-shape {
+  width: 100%;
+  height: 6vh;
+  background: linear-gradient(180deg, #232526 60%, #414345 100%);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 -2px 12px 0 #232526cc;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+.building-window {
+  position: absolute;
+  top: 1vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18vw;
+  max-width: 260px;
+  height: 2vh;
+  background: repeating-linear-gradient(90deg, #00ffe7 0 8px, transparent 8px 16px);
+  opacity: 0.3;
+  border-radius: 4px;
+  z-index: 3;
+}
+
+.city-video {
+  width: 100%;
+  height: 38vh;
+  object-fit: cover;
+  border-radius: 0 0 16px 16px;
+  box-shadow: 0 8px 32px 0 rgba(0,0,0,0.7), 0 0 0 4px #232526;
+  background: #222;
+  border-bottom: 8px solid #3a3a3a;
+  transition: transform 0.3s cubic-bezier(.4,2,.6,1), box-shadow 0.3s;
+  position: relative;
+  z-index: 4;
+}
+
+.city-video:hover {
+  transform: scale(1.04) translateY(-8px);
+  box-shadow: 0 16px 48px 0 #00ffe7cc, 0 0 0 4px #00ffe7cc;
+  border-bottom: 8px solid #00ffe7;
+}
