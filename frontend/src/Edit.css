@@ -3,8 +3,19 @@ body {
   padding: 0;
   font-family: 'Segoe UI', Arial, sans-serif;
   min-height: 100vh;
-  background: linear-gradient(to top, #232526 0%, #414345 100%);
   position: relative;
+}
+
+.edit-page-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url('/looping_bg.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: brightness(0.4) saturate(0.7) contrast(1.1) hue-rotate(-8deg);
+  box-shadow: inset 0 0 80px rgba(0, 0, 30, 0.6), 0 -2px 30px rgba(0, 255, 231, 0.08);
 }
 
 .city-skyline {
@@ -81,7 +92,9 @@ body {
 
 .edit-page-exiting .video-title,
 .edit-page-exiting .video-container,
-.edit-page-exiting .city-skyline {
+.edit-page-exiting .edit-scene-bar,
+.edit-page-exiting .city-skyline,
+.edit-page-exiting .edit-page-bg {
   animation: buildingsFadeOut 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
@@ -116,12 +129,83 @@ body {
 
 .video-container {
   display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  overflow: hidden;
+  animation: buildingsRise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.video-strip {
+  display: flex;
   gap: 2vw;
   justify-content: center;
   align-items: flex-end;
-  position: relative;
+  width: 90vw;
+  max-width: calc(3 * 400px + 2 * 2vw);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.edit-scene-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
   z-index: 1;
   animation: buildingsRise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.edit-scene-input {
+  flex: 1;
+  max-width:  min(420px, 75vw);
+  padding: 0.75rem 1.25rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #e0e0e0;
+  background: rgba(10, 10, 12, 0.9);
+  border: 2px solid rgba(0, 255, 231, 0.4);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.edit-scene-input::placeholder {
+  color: rgba(0, 255, 231, 0.5);
+}
+
+.edit-scene-input:focus {
+  border-color: rgba(0, 255, 231, 0.8);
+  box-shadow: 0 0 16px rgba(0, 255, 231, 0.2);
+}
+
+.carousel-btn {
+  width: 3rem;
+  height: 3rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 255, 231, 0.6);
+  background: rgba(10, 10, 12, 0.85);
+  color: #00ffe7;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+
+.carousel-btn:hover {
+  background: rgba(0, 255, 231, 0.15);
+  box-shadow: 0 0 20px rgba(0, 255, 231, 0.3);
+}
+
+.carousel-btn:active {
+  transform: scale(0.96);
 }
 
 @keyframes buildingsRise {
@@ -146,55 +230,6 @@ body {
   min-width: 220px;
   height: 44vh;
   margin-bottom: 0;
-}
-
-.building-shape {
-  width: 100%;
-  height: 6vh;
-  border-radius: 8px 8px 0 0;
-  box-shadow: 0 -2px 12px 0 #232526cc;
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 2;
-}
-
-/* Decorative buildings: looping_bg with dark night + neon */
-.building-bg .building-shape-bg {
-  height: 100%;
-  background-size: cover;
-  background-repeat: no-repeat;
-  border-radius: 12px 12px 0 0;
-  /* Dark night undertone */
-  filter: brightness(0.45) saturate(0.8) contrast(1.1) hue-rotate(-6deg);
-  box-shadow:
-    inset 0 0 60px rgba(0, 0, 25, 0.5),
-    0 0 0 1px rgba(0, 255, 231, 0.25),
-    0 0 20px rgba(0, 255, 231, 0.15),
-    0 0 40px rgba(0, 255, 231, 0.08);
-}
-.building-bg:hover .building-shape-bg {
-  filter: brightness(0.55) saturate(0.9) contrast(1.1) hue-rotate(-6deg);
-  box-shadow:
-    inset 0 0 60px rgba(0, 0, 25, 0.4),
-    0 0 0 2px rgba(0, 255, 231, 0.5),
-    0 0 28px rgba(0, 255, 231, 0.3),
-    0 0 56px rgba(0, 255, 231, 0.15);
-}
-
-.building-window {
-  position: absolute;
-  top: 1vh;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 90%;
-  height: 4.5vh;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 4px;
-  padding: 4px;
-  z-index: 3;
 }
 
 .window-light {
@@ -241,7 +276,8 @@ body {
   z-index: 4;
 }
 
-.city-video:hover {
+/* Center (selected) video always has the highlight; others never do. No hover. */
+.building-center .city-video {
   transform: scale(1.04) translateY(-8px);
   box-shadow:
     0 16px 48px 0 rgba(0, 255, 231, 0.4),
