@@ -1,0 +1,99 @@
+.video-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #0f0f0f;
+  color: #e5e5e5;
+}
+
+.video-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.video-nav-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  color: #a3a3a3;
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid #404040;
+  border-radius: 8px;
+  background: transparent;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.video-nav-create:hover {
+  color: #e5e5e5;
+  border-color: #525252;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.video-nav-create::before {
+  content: "+";
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.video-nav-edit {
+  margin-left: auto;
+  padding: 0.5rem 1.25rem;
+  background: linear-gradient(180deg, #00ffe7 0%, #00d4c4 100%);
+  color: #0a0a0a;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 8px;
+  border: none;
+  box-shadow: 0 2px 12px rgba(0, 255, 231, 0.35), 0 1px 0 rgba(255, 255, 255, 0.15) inset;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.video-nav-edit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(0, 255, 231, 0.45), 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+}
+
+.video-nav-edit:active {
+  transform: translateY(0);
+}
+
+.video-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.video-player-wrapper {
+  width: 100%;
+  max-width: 900px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1a1a1a;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.video-player {
+  width: 100%;
+  display: block;
+}
+
+.video-prompt {
+  margin-top: 1rem;
+  color: #737373;
+  font-size: 0.9rem;
+}

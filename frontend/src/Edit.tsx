@@ -1,6 +1,18 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './Edit.css';
 
+const FADE_OUT_MS = 600;
+
 function Edit() {
+  const [exiting, setExiting] = useState(false);
+  const navigate = useNavigate();
+
+  const handleDone = () => {
+    setExiting(true);
+    setTimeout(() => navigate('/video'), FADE_OUT_MS);
+  };
+
   // Decorative buildings (no video)
   const decorativeBuildings = [
     { key: 'left1', shape: 'tall', color: '#414345' },
@@ -17,7 +29,10 @@ function Edit() {
   };
 
   return (
-    <div className="video-page">
+    <div className={`video-page edit-page ${exiting ? 'edit-page-exiting' : ''}`}>
+      <button type="button" className="edit-done-btn" onClick={handleDone} disabled={exiting}>
+        Done
+      </button>
       <h1 className="video-title">LiveCut</h1>
       <div className="video-container">
         {/* Left decorative buildings */}
