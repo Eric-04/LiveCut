@@ -21,6 +21,7 @@ load_dotenv()
 
 class DecomposeRequest(Model):
     script: str
+    num_scenes: int = 5
 
 
 class SceneOut(Model):
@@ -51,7 +52,7 @@ class DecomposeLLM(BaseModel):
 prompt = ChatPromptTemplate.from_messages([
     ("system", """
 You are an expert cinematic director and voiceover writer.
-Decompose the user's cinematic script into exactly 5 sequential scenes.
+Decompose the user's cinematic script into exactly {num_scenes} sequential scenes.
 For each scene, generate:
 1. A highly detailed cinematic video prompt usable by a text-to-video model
 2. A natural voiceover script spoken in ~5 seconds (12–15 words)
@@ -100,10 +101,10 @@ async def handle_decompose(ctx: Context, sender: str, req: DecomposeRequest):
     Receives a script string, runs the LangChain chain, maps the plain
     Pydantic output into uAgents Models, and replies.
     """
-    ctx.logger.info(f"Received decompose request from {sender}")
+    ctx.logger.info(f"Received decompose request from {sender} (num_scenes={req.num_scenes})")
 
     # result is a DecomposeLLM instance (plain Pydantic)
-    result: DecomposeLLM = chain.invoke({"script": req.script})
+    result: DecomposeLLM = chain.invoke({"script": req.script, "num_scenes": req.num_scenes})
 
     # Map each SceneLLM → SceneOut (uAgents Model) for the reply
     scenes = [

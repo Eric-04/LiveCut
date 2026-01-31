@@ -1,6 +1,6 @@
 """
 main.py — FastAPI orchestrator.
-Queries the scene_decomposer uAgent, then fans out 5 parallel calls
+Queries the scene_decomposer uAgent, then fans out N parallel calls
 to the audio_generator uAgent for TTS.
 
 Run: uvicorn main:app --reload --port 8000
@@ -51,6 +51,7 @@ if not AUDIO_AGENT_ADDRESS:
 
 class DecomposeRequest(Model):
     script: str
+    num_scenes: int = 5
 
 
 class AudioRequest(Model):
@@ -85,11 +86,11 @@ def parse_response(response) -> dict:
 
 # ---------- Query helpers ----------
 
-async def query_decomposer(script: str) -> dict:
+async def query_decomposer(script: str, num_scenes: int) -> dict:
     """Send a script to the decomposer agent and return the parsed response."""
     response = await send_sync_message(
         destination=DECOMPOSER_ADDRESS,
-        message=DecomposeRequest(script=script),
+        message=DecomposeRequest(script=script, num_scenes=num_scenes),
         timeout=60,
     )
     return parse_response(response)
@@ -102,11 +103,6 @@ async def query_audio_agent(voiceover: str) -> str:
         message=AudioRequest(voiceover=voiceover),
         timeout=60,
     )
-
-    # DEBUG — remove once confirmed working
-    print(f"DEBUG audio type: {type(response)}")
-    print(f"DEBUG audio value: {response}")
-
     data = parse_response(response)
     return data["audio_url"]
 
@@ -115,26 +111,31 @@ async def query_audio_agent(voiceover: str) -> str:
 
 class DecomposeHTTPRequest(BaseModel):
     script: str
+    num_scenes: int = 5
 
 
 @app.post("/generate", response_model=DecomposeResponse)
 async def generate_video_and_audio(req: DecomposeHTTPRequest):
     """
-    POST  {"script": "..."}
+    POST  {"script": "...", "num_scenes": 5}
 
-    1. Forwards the script to the scene_decomposer uAgent.
-    2. Fans out all 5 voiceovers to the audio_generator uAgent in parallel.
+    num_scenes is optional — defaults to 5 if omitted.
+
+    1. Forwards the script + num_scenes to the scene_decomposer uAgent.
+    2. Fans out all N voiceovers to the audio_generator uAgent in parallel.
     3. Zips the audio URLs back into the scenes and returns the full payload.
     """
     if not req.script.strip():
         raise HTTPException(status_code=400, detail="Script cannot be empty")
+    if req.num_scenes < 1 or req.num_scenes > 20:
+        raise HTTPException(status_code=400, detail="num_scenes must be between 1 and 20")
 
     try:
-        # 1. Decompose the script into 5 scenes
-        result = await query_decomposer(req.script)
+        # 1. Decompose the script into N scenes
+        result = await query_decomposer(req.script, req.num_scenes)
         scenes = result["scenes"]
 
-        # 2. Fire all 5 TTS calls concurrently
+        # 2. Fire all N TTS calls concurrently
         audio_urls = await asyncio.gather(
             *(query_audio_agent(scene["voiceover"]) for scene in scenes)
         )
