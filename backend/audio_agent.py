@@ -22,7 +22,6 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 
 class AudioRequest(Model):
     voiceover: str
-    voice_id: str
 
 
 class AudioResponse(Model):
@@ -56,7 +55,7 @@ async def handle_audio(ctx: Context, sender: str, req: AudioRequest):
     path = os.path.join(AUDIO_DIR, filename)
 
     audio = eleven.text_to_speech.convert(
-        voice_id=req.voice_id,
+        voice_id="Gfpl8Yo74Is0W6cPUWWT",
         text=req.voiceover,
         model_id="eleven_monolingual_v1",
     )

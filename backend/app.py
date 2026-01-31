@@ -33,7 +33,6 @@ app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
 # ---------- Agent addresses ----------
 DECOMPOSER_ADDRESS = os.getenv("AGENT_ADDRESS")
 AUDIO_AGENT_ADDRESS = os.getenv("AUDIO_AGENT_ADDRESS")
-VOICE_AGENT_ADDRESS = os.getenv("VOICE_AGENT_ADDRESS")
 
 if not DECOMPOSER_ADDRESS:
     raise RuntimeError(
@@ -43,11 +42,6 @@ if not DECOMPOSER_ADDRESS:
 if not AUDIO_AGENT_ADDRESS:
     raise RuntimeError(
         "AUDIO_AGENT_ADDRESS is not set. Run audio_agent.py first, copy its printed "
-        "address, and add it to your .env file."
-    )
-if not VOICE_AGENT_ADDRESS:
-    raise RuntimeError(
-        "VOICE_AGENT_ADDRESS is not set. Run voice_agent.py first, copy its printed "
         "address, and add it to your .env file."
     )
 
@@ -60,13 +54,8 @@ class DecomposeRequest(Model):
     num_scenes: int = 5
 
 
-class VoiceSelectRequest(Model):
-    voiceover: str
-
-
 class AudioRequest(Model):
     voiceover: str
-    voice_id: str
 
 
 # ---------- Pydantic schemas for the HTTP API ----------
@@ -107,21 +96,11 @@ async def query_decomposer(script: str, num_scenes: int) -> dict:
     return parse_response(response)
 
 
-async def query_voice_agent(script: str) -> dict:
-    """Send the original script to the voice selector agent and return {voiceover, voice_id, voice_name}."""
-    response = await send_sync_message(
-        destination=VOICE_AGENT_ADDRESS,
-        message=VoiceSelectRequest(voiceover=script),
-        timeout=60,
-    )
-    return parse_response(response)
-
-
-async def query_audio_agent(voiceover: str, voice_id: str) -> str:
-    """Send a voiceover + voice_id to the audio agent and return the audio_url."""
+async def query_audio_agent(voiceover: str) -> str:
+    """Send a voiceover to the audio agent and return the audio_url."""
     response = await send_sync_message(
         destination=AUDIO_AGENT_ADDRESS,
-        message=AudioRequest(voiceover=voiceover, voice_id=voice_id),
+        message=AudioRequest(voiceover=voiceover),
         timeout=60,
     )
     data = parse_response(response)
@@ -152,18 +131,13 @@ async def generate_video_and_audio(req: DecomposeHTTPRequest):
         raise HTTPException(status_code=400, detail="num_scenes must be between 1 and 20")
 
     try:
-        # 1. Decompose and voice-select in parallel — neither depends on the other
-        decompose_task = query_decomposer(req.script, req.num_scenes)
-        voice_task = query_voice_agent(req.script)
-        result, voice_selection = await asyncio.gather(decompose_task, voice_task)
-
+        # 1. Decompose the script into N scenes
+        result = await query_decomposer(req.script, req.num_scenes)
         scenes = result["scenes"]
-        voice_id = voice_selection["voice_id"]
 
-        # 2. Fan out audio generation for all N scenes in parallel,
-        #    all using the single selected voice
+        # 2. Fire all N TTS calls concurrently
         audio_urls = await asyncio.gather(
-            *(query_audio_agent(scene["voiceover"], voice_id) for scene in scenes)
+            *(query_audio_agent(scene["voiceover"]) for scene in scenes)
         )
 
         # 3. Merge and return

@@ -55,7 +55,7 @@ You are an expert cinematic director and voiceover writer.
 Decompose the user's cinematic script into exactly {num_scenes} sequential scenes.
 For each scene, generate:
 1. A highly detailed cinematic video prompt usable by a text-to-video model
-2. A natural voiceover script spoken in ~5 seconds (12–15 words)
+2. A natural voiceover script spoken in <5 seconds (~10–12 words)
 Rules:
 - Single coherent shot
 - Include environment, lighting, camera framing, camera motion, and mood
