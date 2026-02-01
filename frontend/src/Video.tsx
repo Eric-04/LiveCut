@@ -15,23 +15,27 @@ interface GenerateResponse {
 export default function Video() {
   const { state } = useLocation();
   const prompt = state?.prompt;
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [generatedData, setGeneratedData] = useState<GenerateResponse | null>(null);
   const [frameCount, setFrameCount] = useState(0);
   const [totalFrames, setTotalFrames] = useState(0);
   const [wsStatus, setWsStatus] = useState<string>("");
   const [currentScene, setCurrentScene] = useState(0);
-  
+  const [isGenerationComplete, setIsGenerationComplete] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentPlaybackFrame, setCurrentPlaybackFrame] = useState(0);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const framesRef = useRef<Blob[]>([]);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const framesRef = useRef<string[]>([]); // Store frame URLs
   const audioElementsRef = useRef<HTMLAudioElement[]>([]);
   const currentSceneRef = useRef<number>(0);
   const frameQueueRef = useRef<Map<number, string>>(new Map());
   const nextFrameToDrawRef = useRef<number>(0);
   const isDrawingRef = useRef<boolean>(false);
+  const playbackIntervalRef = useRef<number | null>(null);
+  const canvasSizeRef = useRef<{width: number, height: number} | null>(null);
 
   // Auto-start: Call /generate endpoint and then immediately connect to WebSocket
   useEffect(() => {
@@ -91,6 +95,8 @@ export default function Video() {
   const startWebSocketGeneration = (sceneData: GenerateResponse) => {
     setFrameCount(0);
     setTotalFrames(0);
+    setIsGenerationComplete(false);
+    setIsPlaying(false);
     framesRef.current = [];
 
     const wsUrl = "ws://localhost:8010/ws/generate";
@@ -115,33 +121,15 @@ export default function Video() {
         switch_frame_indices: [96, 192, 288, 384],
         reprompts: null
       }));
-      
+
       // Reset frame queue for new generation
       frameQueueRef.current.clear();
       nextFrameToDrawRef.current = 0;
       currentSceneRef.current = 0;
-
-      // Start playing first audio when WebSocket is ready
-      if (audioElementsRef.current.length > 0) {
-        setTimeout(() => {
-          // Make sure all audio is stopped first
-          audioElementsRef.current.forEach((audio, idx) => {
-            audio.pause();
-            audio.currentTime = 0;
-          });
-
-          // Play only the first audio
-          audioElementsRef.current[0].play().catch(err => {
-            console.error("Error playing first audio:", err);
-          });
-          console.log("Started playing audio for scene 1");
-          currentSceneRef.current = 0;
-          setCurrentScene(0);
-        }, 100); // Small delay to ensure everything is ready
-      }
+      // No audio playback during generation - will play after all frames are ready
     };
 
-    // Function to process queued frames in order
+    // Function to process queued frames in order (during generation - no audio)
     const processFrameQueue = () => {
       if (isDrawingRef.current) return;
 
@@ -165,18 +153,15 @@ export default function Video() {
         if (nextFrame === 0) {
           canvas.width = img.width;
           canvas.height = img.height;
+          canvasSizeRef.current = { width: img.width, height: img.height };
           console.log(`Canvas initialized: ${img.width}x${img.height}`);
         }
 
         // Draw image to canvas
         ctx.drawImage(img, 0, 0);
 
-        // Store frame as blob
-        canvas.toBlob((frameBlob) => {
-          if (frameBlob) {
-            framesRef.current[nextFrame] = frameBlob;
-          }
-        }, 'image/png');
+        // Store frame URL for later playback (don't revoke yet)
+        framesRef.current[nextFrame] = imageUrl;
 
         // Update state less frequently (every 10 frames) to reduce re-renders
         if (nextFrame % 10 === 0 || nextFrame === 0) {
@@ -184,38 +169,7 @@ export default function Video() {
           setWsStatus(`Generating frame ${nextFrame + 1}...`);
         }
 
-        // Determine which scene we're in based on frame index
-        // switch_frame_indices: [96, 192, 288, 384] for 5 scenes over 480 frames
-        let sceneIndex = 0;
-        if (nextFrame >= 384) sceneIndex = 4;
-        else if (nextFrame >= 288) sceneIndex = 3;
-        else if (nextFrame >= 192) sceneIndex = 2;
-        else if (nextFrame >= 96) sceneIndex = 1;
-
-        // If we've switched to a new scene, switch audio (using ref to avoid stale closure)
-        if (sceneIndex !== currentSceneRef.current) {
-          console.log(`Scene change detected: ${currentSceneRef.current} -> ${sceneIndex} at frame ${nextFrame}`);
-
-          // Stop ALL audio first to ensure only one plays
-          audioElementsRef.current.forEach((audio) => {
-            audio.pause();
-            audio.currentTime = 0;
-          });
-
-          // Play new scene's audio
-          if (audioElementsRef.current[sceneIndex]) {
-            audioElementsRef.current[sceneIndex].play().catch(err => {
-              console.error(`Error playing audio for scene ${sceneIndex + 1}:`, err);
-            });
-            console.log(`Now playing audio for scene ${sceneIndex + 1}`);
-          }
-
-          currentSceneRef.current = sceneIndex;
-          setCurrentScene(sceneIndex);
-        }
-
-        // Clean up and move to next frame
-        URL.revokeObjectURL(imageUrl);
+        // Clean up queue entry and move to next frame
         frameQueueRef.current.delete(nextFrame);
         nextFrameToDrawRef.current = nextFrame + 1;
         isDrawingRef.current = false;
@@ -261,8 +215,9 @@ export default function Video() {
       } else if (data.type === 'done') {
         console.log(`✓ Generation complete! Total frames: ${data.total_frames}`);
         setFrameCount(data.total_frames);
-        setWsStatus(`✓ Complete! Generated ${data.total_frames} frames`);
         setTotalFrames(data.total_frames);
+        setIsGenerationComplete(true);
+        setWsStatus(`✓ Complete! Generated ${data.total_frames} frames. Click Play to watch with audio.`);
         ws.close();
 
       } else if (data.type === 'error') {
@@ -291,13 +246,142 @@ export default function Video() {
       if (wsRef.current) {
         wsRef.current.close();
       }
+      if (playbackIntervalRef.current) {
+        clearInterval(playbackIntervalRef.current);
+      }
       // Stop and cleanup all audio elements
       audioElementsRef.current.forEach(audio => {
         audio.pause();
         audio.src = '';
       });
+      // Cleanup frame URLs
+      framesRef.current.forEach(url => {
+        if (url) URL.revokeObjectURL(url);
+      });
     };
   }, []);
+
+  // Play the full video with audio after generation is complete
+  const playVideo = () => {
+    if (!isGenerationComplete || framesRef.current.length === 0) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Reset to beginning
+    setCurrentPlaybackFrame(0);
+    setIsPlaying(true);
+    currentSceneRef.current = 0;
+    setCurrentScene(0);
+
+    // Reset canvas size if needed
+    if (canvasSizeRef.current) {
+      canvas.width = canvasSizeRef.current.width;
+      canvas.height = canvasSizeRef.current.height;
+    }
+
+    // Stop any existing audio and reset
+    audioElementsRef.current.forEach(audio => {
+      audio.pause();
+      audio.currentTime = 0;
+    });
+
+    // Start first audio
+    if (audioElementsRef.current.length > 0) {
+      audioElementsRef.current[0].play().catch(err => {
+        console.error("Error playing first audio:", err);
+      });
+    }
+
+    let frameIndex = 0;
+    const fps = 24; // Assuming 24 FPS
+    const frameInterval = 1000 / fps;
+
+    // Clear any existing interval
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current);
+    }
+
+    const playFrame = () => {
+      if (frameIndex >= framesRef.current.length) {
+        // Playback complete
+        setIsPlaying(false);
+        setWsStatus("✓ Playback complete!");
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current);
+          playbackIntervalRef.current = null;
+        }
+        // Stop all audio
+        audioElementsRef.current.forEach(audio => {
+          audio.pause();
+        });
+        return;
+      }
+
+      const imageUrl = framesRef.current[frameIndex];
+      if (!imageUrl) {
+        frameIndex++;
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0);
+        setCurrentPlaybackFrame(frameIndex);
+
+        // Determine which scene we're in based on frame index
+        let sceneIndex = 0;
+        if (frameIndex >= 384) sceneIndex = 4;
+        else if (frameIndex >= 288) sceneIndex = 3;
+        else if (frameIndex >= 192) sceneIndex = 2;
+        else if (frameIndex >= 96) sceneIndex = 1;
+
+        // If we've switched to a new scene, switch audio
+        if (sceneIndex !== currentSceneRef.current) {
+          console.log(`Playback scene change: ${currentSceneRef.current} -> ${sceneIndex} at frame ${frameIndex}`);
+
+          // Stop all audio
+          audioElementsRef.current.forEach(audio => {
+            audio.pause();
+            audio.currentTime = 0;
+          });
+
+          // Play new scene's audio
+          if (audioElementsRef.current[sceneIndex]) {
+            audioElementsRef.current[sceneIndex].play().catch(err => {
+              console.error(`Error playing audio for scene ${sceneIndex + 1}:`, err);
+            });
+          }
+
+          currentSceneRef.current = sceneIndex;
+          setCurrentScene(sceneIndex);
+        }
+      };
+      img.src = imageUrl;
+      frameIndex++;
+    };
+
+    // Start playback loop
+    playbackIntervalRef.current = window.setInterval(playFrame, frameInterval);
+    playFrame(); // Play first frame immediately
+  };
+
+  // Stop playback
+  const stopVideo = () => {
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current);
+      playbackIntervalRef.current = null;
+    }
+    setIsPlaying(false);
+    // Stop all audio
+    audioElementsRef.current.forEach(audio => {
+      audio.pause();
+      audio.currentTime = 0;
+    });
+    setWsStatus("Playback stopped. Click Play to watch again.");
+  };
 
   return (
     <div className="video-page">
@@ -320,15 +404,15 @@ export default function Video() {
 
         {/* Video canvas container - shown as soon as WebSocket connects */}
         {(wsStatus || frameCount > 0) && (
-          <div className="video-container" style={{ 
+          <div className="video-container" style={{
             marginTop: '30px',
             background: '#000',
             borderRadius: '12px',
             overflow: 'hidden',
             position: 'relative'
           }}>
-            <canvas 
-              ref={canvasRef} 
+            <canvas
+              ref={canvasRef}
               id="canvas"
               style={{
                 width: '100%',
@@ -336,6 +420,7 @@ export default function Video() {
                 display: 'block'
               }}
             />
+            {/* Frame counter overlay */}
             {frameCount > 0 && (
               <div className="frame-info" style={{
                 position: 'absolute',
@@ -348,8 +433,71 @@ export default function Video() {
                 fontSize: '12px',
                 fontFamily: 'monospace'
               }}>
-                Frame: {frameCount}{totalFrames > 0 ? ` / ${totalFrames}` : ''}
+                {isPlaying
+                  ? `Playing: ${currentPlaybackFrame + 1} / ${totalFrames}`
+                  : `Frame: ${frameCount}${totalFrames > 0 ? ` / ${totalFrames}` : ''}`
+                }
               </div>
+            )}
+            {/* Generation overlay */}
+            {!isGenerationComplete && frameCount > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '10px',
+                left: '10px',
+                background: 'rgba(255,165,0,0.9)',
+                color: 'white',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 'bold'
+              }}>
+                ⏳ Generating...
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Playback controls - shown after generation complete */}
+        {isGenerationComplete && (
+          <div style={{
+            marginTop: '15px',
+            display: 'flex',
+            gap: '10px',
+            justifyContent: 'center'
+          }}>
+            {!isPlaying ? (
+              <button
+                onClick={playVideo}
+                style={{
+                  padding: '12px 30px',
+                  fontSize: '16px',
+                  background: '#4CAF50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                ▶ Play Video with Audio
+              </button>
+            ) : (
+              <button
+                onClick={stopVideo}
+                style={{
+                  padding: '12px 30px',
+                  fontSize: '16px',
+                  background: '#f44336',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                ⏹ Stop
+              </button>
             )}
           </div>
         )}
