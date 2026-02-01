@@ -3,6 +3,7 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 
@@ -32,6 +33,15 @@ if not ELEVENLABS_API_KEY:
 # ------------------------------------------------------------------
 
 app = FastAPI(title="Cinematic Scene + Audio Generator")
+
+# Add CORS middleware to allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # React dev servers
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ------------------------------------------------------------------
 # Audio setup
