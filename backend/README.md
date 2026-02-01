@@ -24,5 +24,6 @@ Terminal 1:  python scene_agent.py              # scene decomposer
 Terminal 2:  python audio_agent.py        # TTS generation
              # paste all three agent1q... addresses into .env
 Terminal 3:  uvicorn app:app --reload
+Terminal 4:  python mock_websocket.py
 
 export SSL_CERT_FILE=$(python -m certifi)    
