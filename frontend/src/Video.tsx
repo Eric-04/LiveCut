@@ -207,19 +207,11 @@ export default function Video() {
 
           // Create blob from JPEG data
           const blob = new Blob([bytes], { type: 'image/jpeg' });
-          // Convert to data URL so it persists across page navigation
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const imageUrl = reader.result as string;
-            frameQueueRef.current.set(data.frame_index, imageUrl);
-            processFrameQueue();
-          };
-          reader.readAsDataURL(blob);
-          // Remove the old imageUrl creation and queue set lines below
+          const imageUrl = URL.createObjectURL(blob);
 
-          // // Add to queue and process
-          // frameQueueRef.current.set(data.frame_index, imageUrl);
-          // processFrameQueue();
+          // Add to queue and process
+          frameQueueRef.current.set(data.frame_index, imageUrl);
+          processFrameQueue();
         }
 
       } else if (data.type === 'done') {
@@ -406,7 +398,8 @@ export default function Video() {
             frames: framesRef.current,
             audioUrls: audioUrlsRef.current,
             canvasSize: canvasSizeRef.current,
-            totalFrames: totalFrames
+            totalFrames: totalFrames,
+            scenes: generatedData?.scenes || []
           }}
           className="video-nav-edit"
         >

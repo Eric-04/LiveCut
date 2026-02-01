@@ -6,6 +6,12 @@ const FADE_OUT_MS = 600;
 const FRAMES_PER_CHUNK = 96;
 const FPS = 24;
 
+interface SceneData {
+  video_prompt: string;
+  voiceover: string;
+  audio_url: string;
+}
+
 function Edit() {
   const { state } = useLocation();
   const navigate = useNavigate();
@@ -15,6 +21,7 @@ function Edit() {
   const audioUrls: string[] = state?.audioUrls || [];
   const canvasSize = state?.canvasSize || { width: 848, height: 480 };
   const totalFrames = state?.totalFrames || frames.length;
+  const scenes: SceneData[] = state?.scenes || [];
 
   // Calculate number of chunks
   const numChunks = Math.ceil(totalFrames / FRAMES_PER_CHUNK);
@@ -23,6 +30,7 @@ function Edit() {
   const [centerIndex, setCenterIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrame, setCurrentFrame] = useState(0);
+  const [editInput, setEditInput] = useState('');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioElementsRef = useRef<HTMLAudioElement[]>([]);
@@ -199,6 +207,40 @@ function Edit() {
     setCenterIndex((c) => (c + 1) % numChunks);
   };
 
+  const handleRegenerate = () => {
+    if (!editInput.trim()) {
+      alert('Please enter a new direction for the scene');
+      return;
+    }
+
+    if (scenes.length === 0) {
+      alert('No scene data available');
+      return;
+    }
+
+    stopPlayback();
+
+    // Build kept_scenes array (all scenes up to but not including current scene)
+    const keptScenes = scenes.slice(0, centerIndex);
+
+    const regenerateData = {
+      cutoff_index: centerIndex,
+      kept_scenes: keptScenes,
+      new_direction: editInput.trim()
+    };
+    const regenerateDataString = JSON.stringify(regenerateData, null, 2);
+
+    console.log('Navigating to video with regenerate data:', regenerateData);
+
+    // Navigate back to video page with regenerate data
+    navigate('/video', { 
+      state: {
+          prompt: regenerateDataString,
+          isGenerating: true,
+        },
+    });
+  };
+
   // Calculate frame info for display
   const chunkStartFrame = centerIndex * FRAMES_PER_CHUNK;
   const chunkEndFrame = Math.min(chunkStartFrame + FRAMES_PER_CHUNK, totalFrames);
@@ -283,6 +325,13 @@ function Edit() {
           className="edit-scene-input"
           placeholder="Edit This Scene"
           aria-label="Edit this scene"
+          value={editInput}
+          onChange={(e) => setEditInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleRegenerate();
+            }
+          }}
         />
         <button
           type="button"
@@ -294,6 +343,28 @@ function Edit() {
           ›
         </button>
       </div>
+      
+      {/* Regenerate button */}
+      <div style={{ marginTop: '20px', marginBottom: '20px', textAlign: 'center', zIndex: 10, position: 'relative' }}>
+        <button
+          onClick={handleRegenerate}
+          disabled={!editInput.trim()}
+          style={{
+            padding: '12px 30px',
+            fontSize: '16px',
+            background: !editInput.trim() ? '#ccc' : '#2196F3',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: !editInput.trim() ? 'not-allowed' : 'pointer',
+            fontWeight: 'bold',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+        >
+          ✨ Regenerate from Scene {centerIndex + 1}
+        </button>
+      </div>
+      
       <div className="city-skyline" aria-hidden="true" />
     </div>
   );
