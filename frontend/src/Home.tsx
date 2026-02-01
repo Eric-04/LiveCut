@@ -1,15 +1,23 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import "./Home.css";
 
 export default function HomePage() {
     const [inputValue, setInputValue] = useState("");
+    const [isGenerating, setIsGenerating] = useState(false);
     const navigate = useNavigate();
     const trimmed = inputValue.trim();
   
-    const goToVideoPage = () => {
-      if (trimmed) {
-        navigate("/video", { state: { prompt: trimmed } });
+    const goToVideoPage = async () => {
+      if (trimmed && !isGenerating) {
+        setIsGenerating(true);
+        // Navigate to video page with the prompt and generating state
+        navigate("/video", { 
+          state: { 
+            prompt: trimmed,
+            isGenerating: true 
+          } 
+        });
       }
     };
   
@@ -33,15 +41,15 @@ export default function HomePage() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
+              disabled={isGenerating}
             />
-            <Link
-              to={trimmed ? "/video" : "#"}
-              state={trimmed ? { prompt: trimmed } : undefined}
+            <button
+              onClick={goToVideoPage}
               className="chat-submit"
-              onClick={(e) => !trimmed && e.preventDefault()}
+              disabled={!trimmed || isGenerating}
             >
-              Go
-            </Link>
+              {isGenerating ? "Generating..." : "Go"}
+            </button>
           </div>
         </main>
       </div>

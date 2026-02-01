@@ -12,8 +12,13 @@ import asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, AsyncGenerator
+import base64
+
+from mock_video import generate_blue_video, combine_video_and_audio
 
 # uAgents
 from uagents import Model
@@ -24,6 +29,15 @@ load_dotenv()
 
 # ---------- App setup ----------
 app = FastAPI(title="Cinematic Video + Audio Generator")
+
+# Add CORS middleware to allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # React dev servers
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Serve audio files written by the audio_agent
 AUDIO_DIR = "generated_audio"
@@ -106,6 +120,12 @@ async def query_audio_agent(voiceover: str) -> str:
     data = parse_response(response)
     return data["audio_url"]
 
+def video_file_to_base64(video_path: str) -> str:
+    """Read a video file and convert it to base64 string."""
+    with open(video_path, 'rb') as video_file:
+        video_bytes = video_file.read()
+        base64_string = base64.b64encode(video_bytes).decode('utf-8')
+    return base64_string
 
 # ---------- Endpoint ----------
 
@@ -114,43 +134,65 @@ class DecomposeHTTPRequest(BaseModel):
     num_scenes: int = 5
 
 
-@app.post("/generate", response_model=DecomposeResponse)
+@app.post("/generate")
 async def generate_video_and_audio(req: DecomposeHTTPRequest):
     """
     POST  {"script": "...", "num_scenes": 5}
 
     num_scenes is optional — defaults to 5 if omitted.
 
-    1. Forwards the script + num_scenes to the scene_decomposer uAgent.
-    2. Fans out all N voiceovers to the audio_generator uAgent in parallel.
-    3. Zips the audio URLs back into the scenes and returns the full payload.
+    Streams back scenes one by one as Server-Sent Events (SSE):
+    1. Decomposes the script into N scenes
+    2. For each scene (in a loop):
+       a. Generate audio asynchronously
+       b. Generate video asynchronously  
+       c. Gather both and combine them
+       d. Stream the scene data back to frontend
     """
     if not req.script.strip():
         raise HTTPException(status_code=400, detail="Script cannot be empty")
     if req.num_scenes < 1 or req.num_scenes > 20:
         raise HTTPException(status_code=400, detail="num_scenes must be between 1 and 20")
 
-    try:
-        # 1. Decompose the script into N scenes
-        result = await query_decomposer(req.script, req.num_scenes)
-        scenes = result["scenes"]
-
-        # 2. Fire all N TTS calls concurrently
-        audio_urls = await asyncio.gather(
-            *(query_audio_agent(scene["voiceover"]) for scene in scenes)
-        )
-
-        # 3. Merge and return
-        return {
-            "scenes": [
-                {
-                    "video_prompt": scene["video_prompt"],
-                    "voiceover": scene["voiceover"],
-                    "audio_url": url,
+    async def generate_scenes() -> AsyncGenerator[str, None]:
+        try:
+            # 1. Decompose the script into N scenes
+            result = await query_decomposer(req.script, req.num_scenes)
+            scenes = result["scenes"]
+            
+            # 2. Process each scene sequentially
+            for i, scene in enumerate(scenes):
+                # a & b. Generate audio and video asynchronously (in parallel for this scene)
+                audio_url, video_file = await asyncio.gather(
+                    query_audio_agent(scene["voiceover"]),
+                    asyncio.to_thread(generate_blue_video)  # Run in thread pool since it's blocking
+                )
+                
+                # c. Combine the audio and video
+                video_url = await combine_video_and_audio(i, audio_url, video_file)
+                video_base64 = await asyncio.to_thread(video_file_to_base64, video_url)
+                
+                # d. Stream the scene data back to frontend
+                scene_data = {
+                    "scene_index": i,
+                    "video_base64": video_base64,
                 }
-                for scene, url in zip(scenes, audio_urls)
-            ]
-        }
+                
+                # Send as Server-Sent Event
+                yield f"data: {json.dumps(scene_data)}\n\n"
+            
+            # Send completion signal
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            
+        except Exception as e:
+            error_data = {"error": str(e)}
+            yield f"data: {json.dumps(error_data)}\n\n"
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return StreamingResponse(
+        generate_scenes(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )

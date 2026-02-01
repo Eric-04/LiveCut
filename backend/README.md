@@ -21,7 +21,8 @@ pip install -r requirements.txt
 
 
 Terminal 1:  python scene_agent.py              # scene decomposer
-Terminal 2:  python voice_selector_agent.py        # voice selector  ← new
-Terminal 3:  python audio_agent.py        # TTS generation
+Terminal 2:  python audio_agent.py        # TTS generation
              # paste all three agent1q... addresses into .env
-Terminal 4:  uvicorn app:app --reload
+Terminal 3:  uvicorn app:app --reload
+
+export SSL_CERT_FILE=$(python -m certifi)    
