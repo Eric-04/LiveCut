@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 FRAME_WIDTH = 832          # 104 * 8  (matches latent width * VAE upscale)
 FRAME_HEIGHT = 480         # 60 * 8
-NUM_OUTPUT_FRAMES = 120    # total frames in a full video
+NUM_OUTPUT_FRAMES = 480    # total frames in a full video
 NUM_FRAME_PER_BLOCK = 6    # frames per denoising block
 FPS = 16                   # playback fps (used only for reference / debug saves)
 
