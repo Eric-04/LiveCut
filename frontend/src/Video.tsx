@@ -28,6 +28,10 @@ export default function Video() {
   const framesRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioElementsRef = useRef<HTMLAudioElement[]>([]);
+  const currentSceneRef = useRef<number>(0);
+  const frameQueueRef = useRef<Map<number, string>>(new Map());
+  const nextFrameToDrawRef = useRef<number>(0);
+  const isDrawingRef = useRef<boolean>(false);
 
   // Auto-start: Call /generate endpoint and then immediately connect to WebSocket
   useEffect(() => {
@@ -112,6 +116,11 @@ export default function Video() {
         reprompts: null
       }));
       
+      // Reset frame queue for new generation
+      frameQueueRef.current.clear();
+      nextFrameToDrawRef.current = 0;
+      currentSceneRef.current = 0;
+
       // Start playing first audio when WebSocket is ready
       if (audioElementsRef.current.length > 0) {
         setTimeout(() => {
@@ -120,34 +129,117 @@ export default function Video() {
             audio.pause();
             audio.currentTime = 0;
           });
-          
+
           // Play only the first audio
           audioElementsRef.current[0].play().catch(err => {
             console.error("Error playing first audio:", err);
           });
           console.log("Started playing audio for scene 1");
+          currentSceneRef.current = 0;
           setCurrentScene(0);
         }, 100); // Small delay to ensure everything is ready
       }
     };
 
+    // Function to process queued frames in order
+    const processFrameQueue = () => {
+      if (isDrawingRef.current) return;
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const nextFrame = nextFrameToDrawRef.current;
+      const imageUrl = frameQueueRef.current.get(nextFrame);
+
+      if (!imageUrl) return; // Frame not ready yet
+
+      isDrawingRef.current = true;
+
+      const img = new Image();
+
+      img.onload = () => {
+        // Set canvas size on first frame
+        if (nextFrame === 0) {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          console.log(`Canvas initialized: ${img.width}x${img.height}`);
+        }
+
+        // Draw image to canvas
+        ctx.drawImage(img, 0, 0);
+
+        // Store frame as blob
+        canvas.toBlob((frameBlob) => {
+          if (frameBlob) {
+            framesRef.current[nextFrame] = frameBlob;
+          }
+        }, 'image/png');
+
+        // Update state less frequently (every 10 frames) to reduce re-renders
+        if (nextFrame % 10 === 0 || nextFrame === 0) {
+          setFrameCount(nextFrame + 1);
+          setWsStatus(`Generating frame ${nextFrame + 1}...`);
+        }
+
+        // Determine which scene we're in based on frame index
+        // switch_frame_indices: [96, 192, 288, 384] for 5 scenes over 480 frames
+        let sceneIndex = 0;
+        if (nextFrame >= 384) sceneIndex = 4;
+        else if (nextFrame >= 288) sceneIndex = 3;
+        else if (nextFrame >= 192) sceneIndex = 2;
+        else if (nextFrame >= 96) sceneIndex = 1;
+
+        // If we've switched to a new scene, switch audio (using ref to avoid stale closure)
+        if (sceneIndex !== currentSceneRef.current) {
+          console.log(`Scene change detected: ${currentSceneRef.current} -> ${sceneIndex} at frame ${nextFrame}`);
+
+          // Stop ALL audio first to ensure only one plays
+          audioElementsRef.current.forEach((audio) => {
+            audio.pause();
+            audio.currentTime = 0;
+          });
+
+          // Play new scene's audio
+          if (audioElementsRef.current[sceneIndex]) {
+            audioElementsRef.current[sceneIndex].play().catch(err => {
+              console.error(`Error playing audio for scene ${sceneIndex + 1}:`, err);
+            });
+            console.log(`Now playing audio for scene ${sceneIndex + 1}`);
+          }
+
+          currentSceneRef.current = sceneIndex;
+          setCurrentScene(sceneIndex);
+        }
+
+        // Clean up and move to next frame
+        URL.revokeObjectURL(imageUrl);
+        frameQueueRef.current.delete(nextFrame);
+        nextFrameToDrawRef.current = nextFrame + 1;
+        isDrawingRef.current = false;
+
+        // Process next frame if available
+        requestAnimationFrame(processFrameQueue);
+      };
+
+      img.onerror = (error) => {
+        console.error('Error loading JPEG image for frame', nextFrame, error);
+        URL.revokeObjectURL(imageUrl);
+        frameQueueRef.current.delete(nextFrame);
+        nextFrameToDrawRef.current = nextFrame + 1;
+        isDrawingRef.current = false;
+        requestAnimationFrame(processFrameQueue);
+      };
+
+      img.src = imageUrl;
+    };
+
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);
-      console.log("WebSocket message type:", data.type, "frame_index:", data.frame_index);
 
       if (data.type === 'frame') {
-        const canvas = canvasRef.current;
-        if (!canvas) {
-          console.error("Canvas not found!");
-          return;
-        }
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          console.error("Cannot get canvas context!");
-          return;
-        }
-
         // Handle JPEG format (used by mock_websocket.py)
         if (data.format === 'jpeg') {
           // Decode base64 to binary
@@ -156,77 +248,19 @@ export default function Video() {
           for (let i = 0; i < binaryString.length; i++) {
             bytes[i] = binaryString.charCodeAt(i);
           }
-          
+
           // Create blob from JPEG data
           const blob = new Blob([bytes], { type: 'image/jpeg' });
           const imageUrl = URL.createObjectURL(blob);
-          
-          // Create image element to load the JPEG
-          const img = new Image();
-          
-          img.onload = () => {
-            // Set canvas size on first frame
-            if (data.frame_index === 0) {
-              canvas.width = img.width;
-              canvas.height = img.height;
-              console.log(`Canvas initialized: ${img.width}x${img.height}`);
-            }
-            
-            // Draw image to canvas
-            ctx.drawImage(img, 0, 0);
-            
-            // Store frame as blob
-            canvas.toBlob((frameBlob) => {
-              if (frameBlob) {
-                framesRef.current.push(frameBlob);
-              }
-            }, 'image/png');
-            
-            setFrameCount(data.frame_index + 1);
-            setWsStatus(`Generating frame ${data.frame_index + 1}...`);
-            
-            // Determine which scene we're in based on frame index
-            // switch_frame_indices: [96, 192, 288, 384] for 5 scenes over 480 frames
-            let sceneIndex = 0;
-            if (data.frame_index >= 384) sceneIndex = 4;
-            else if (data.frame_index >= 288) sceneIndex = 3;
-            else if (data.frame_index >= 192) sceneIndex = 2;
-            else if (data.frame_index >= 96) sceneIndex = 1;
-            
-            // If we've switched to a new scene, switch audio
-            if (sceneIndex !== currentScene) {
-              console.log(`Scene change detected: ${currentScene} -> ${sceneIndex} at frame ${data.frame_index}`);
-              
-              // Stop ALL audio first to ensure only one plays
-              audioElementsRef.current.forEach((audio, idx) => {
-                audio.pause();
-                audio.currentTime = 0;
-              });
-              
-              // Play new scene's audio
-              if (audioElementsRef.current[sceneIndex]) {
-                audioElementsRef.current[sceneIndex].play().catch(err => {
-                  console.error(`Error playing audio for scene ${sceneIndex + 1}:`, err);
-                });
-                console.log(`Now playing audio for scene ${sceneIndex + 1}`);
-              }
-              
-              setCurrentScene(sceneIndex);
-            }
-            
-            // Clean up
-            URL.revokeObjectURL(imageUrl);
-          };
-          
-          img.onerror = (error) => {
-            console.error('Error loading JPEG image:', error);
-          };
-          
-          img.src = imageUrl;
+
+          // Add to queue and process
+          frameQueueRef.current.set(data.frame_index, imageUrl);
+          processFrameQueue();
         }
 
       } else if (data.type === 'done') {
         console.log(`✓ Generation complete! Total frames: ${data.total_frames}`);
+        setFrameCount(data.total_frames);
         setWsStatus(`✓ Complete! Generated ${data.total_frames} frames`);
         setTotalFrames(data.total_frames);
         ws.close();
