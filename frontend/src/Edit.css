@@ -92,10 +92,72 @@ body {
 
 .edit-page-exiting .video-title,
 .edit-page-exiting .video-container,
+.edit-page-exiting .playback-controls,
+.edit-page-exiting .scene-indicator,
 .edit-page-exiting .edit-scene-bar,
 .edit-page-exiting .city-skyline,
 .edit-page-exiting .edit-page-bg {
   animation: buildingsFadeOut 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.playback-controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 20px;
+  margin-bottom: 10px;
+  z-index: 10;
+  position: relative;
+  animation: buildingsRise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.play-btn {
+  padding: 12px 30px;
+  font-size: 16px;
+  background: linear-gradient(180deg, #00ffe7 0%, #00d4c4 100%);
+  color: #0a0a0a;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-family: inherit;
+  box-shadow: 0 2px 12px rgba(0, 255, 231, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.play-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 255, 231, 0.5);
+}
+
+.stop-btn {
+  padding: 12px 30px;
+  font-size: 16px;
+  background: linear-gradient(180deg, #ff6b6b 0%, #ee5a5a 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-family: inherit;
+  box-shadow: 0 2px 12px rgba(255, 107, 107, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stop-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(255, 107, 107, 0.5);
+}
+
+.scene-indicator {
+  text-align: center;
+  color: #00ffe7;
+  font-size: 14px;
+  margin-bottom: 10px;
+  z-index: 10;
+  position: relative;
+  text-shadow: 0 1px 8px rgba(0, 255, 231, 0.5);
+  animation: buildingsRise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .edit-page-exiting .edit-done-btn {

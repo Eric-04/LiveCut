@@ -30,6 +30,7 @@ export default function Video() {
   const wsRef = useRef<WebSocket | null>(null);
   const framesRef = useRef<string[]>([]); // Store frame URLs
   const audioElementsRef = useRef<HTMLAudioElement[]>([]);
+  const audioUrlsRef = useRef<string[]>([]); // Store audio URLs for Edit page
   const currentSceneRef = useRef<number>(0);
   const frameQueueRef = useRef<Map<number, string>>(new Map());
   const nextFrameToDrawRef = useRef<number>(0);
@@ -76,7 +77,8 @@ export default function Video() {
           return audio;
         });
         audioElementsRef.current = audioElements;
-        
+        audioUrlsRef.current = data.scenes.map(scene => scene.audio_url);
+
         setIsLoading(false);
 
         // Step 2: Immediately connect to WebSocket to get frames
@@ -205,11 +207,19 @@ export default function Video() {
 
           // Create blob from JPEG data
           const blob = new Blob([bytes], { type: 'image/jpeg' });
-          const imageUrl = URL.createObjectURL(blob);
+          // Convert to data URL so it persists across page navigation
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const imageUrl = reader.result as string;
+            frameQueueRef.current.set(data.frame_index, imageUrl);
+            processFrameQueue();
+          };
+          reader.readAsDataURL(blob);
+          // Remove the old imageUrl creation and queue set lines below
 
-          // Add to queue and process
-          frameQueueRef.current.set(data.frame_index, imageUrl);
-          processFrameQueue();
+          // // Add to queue and process
+          // frameQueueRef.current.set(data.frame_index, imageUrl);
+          // processFrameQueue();
         }
 
       } else if (data.type === 'done') {
@@ -390,7 +400,16 @@ export default function Video() {
         <Link to="/" className="video-nav-create">
           Create another video
         </Link>
-        <Link to="/edit" className="video-nav-edit">
+        <Link
+          to="/edit"
+          state={{
+            frames: framesRef.current,
+            audioUrls: audioUrlsRef.current,
+            canvasSize: canvasSizeRef.current,
+            totalFrames: totalFrames
+          }}
+          className="video-nav-edit"
+        >
           Edit
         </Link>
       </nav>
