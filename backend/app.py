@@ -1,156 +1,180 @@
-"""
-main.py — FastAPI orchestrator.
-Queries the scene_decomposer uAgent, then fans out N parallel calls
-to the audio_generator uAgent for TTS.
-
-Run: uvicorn main:app --reload --port 8000
-"""
-
 import os
-import json
-import asyncio
+import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List
 
-# uAgents
-from uagents import Model
-from uagents.communication import send_sync_message
-from uagents_core.envelope import Envelope
+# LangChain + Gemini
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
+
+# ElevenLabs
+from elevenlabs import ElevenLabs
+
+# ------------------------------------------------------------------
+# Environment
+# ------------------------------------------------------------------
 
 load_dotenv()
 
-# ---------- App setup ----------
-app = FastAPI(title="Cinematic Video + Audio Generator")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
-# Serve audio files written by the audio_agent
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY is not set")
+if not ELEVENLABS_API_KEY:
+    raise RuntimeError("ELEVENLABS_API_KEY is not set")
+
+# ------------------------------------------------------------------
+# App setup
+# ------------------------------------------------------------------
+
+app = FastAPI(title="Cinematic Scene + Audio Generator")
+
+# ------------------------------------------------------------------
+# Audio setup
+# ------------------------------------------------------------------
+
+eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+
 AUDIO_DIR = "generated_audio"
 os.makedirs(AUDIO_DIR, exist_ok=True)
+
 app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
 
-# ---------- Agent addresses ----------
-DECOMPOSER_ADDRESS = os.getenv("AGENT_ADDRESS")
-AUDIO_AGENT_ADDRESS = os.getenv("AUDIO_AGENT_ADDRESS")
+# ------------------------------------------------------------------
+# Request / Response Models (API-facing)
+# ------------------------------------------------------------------
 
-if not DECOMPOSER_ADDRESS:
-    raise RuntimeError(
-        "AGENT_ADDRESS is not set. Run agent.py first, copy its printed address, "
-        "and add it to your .env file."
-    )
-if not AUDIO_AGENT_ADDRESS:
-    raise RuntimeError(
-        "AUDIO_AGENT_ADDRESS is not set. Run audio_agent.py first, copy its printed "
-        "address, and add it to your .env file."
-    )
-
-
-# ---------- uAgents Models ----------
-# Field names and types must match the Models declared in each agent exactly.
-
-class DecomposeRequest(Model):
+class DecomposeRequest(BaseModel):
     script: str
     num_scenes: int = 5
 
 
-class AudioRequest(Model):
-    voiceover: str
-
-
-# ---------- Pydantic schemas for the HTTP API ----------
-
-class SceneResponse(BaseModel):
+class Scene(BaseModel):
     video_prompt: str
     voiceover: str
+
+
+class SceneResponse(Scene):
     audio_url: str
 
 
 class DecomposeResponse(BaseModel):
     scenes: List[SceneResponse]
 
+# ------------------------------------------------------------------
+# Pydantic models for Gemini structured output (IMPORTANT)
+# ------------------------------------------------------------------
 
-# ---------- Shared helper: parse agent responses ----------
+class SceneLLM(BaseModel):
+    video_prompt: str
+    voiceover: str
 
-def parse_response(response) -> dict:
-    """
-    send_sync_message may return a raw JSON string, an Envelope, or a dict.
-    Normalise to a dict.
-    """
-    if isinstance(response, str):
-        return json.loads(response)
-    if isinstance(response, Envelope):
-        return json.loads(response.decode_payload())
-    return response
+    class Config:
+        extra = "ignore"
 
 
-# ---------- Query helpers ----------
+class DecomposeLLM(BaseModel):
+    scenes: List[SceneLLM]
 
-async def query_decomposer(script: str, num_scenes: int) -> dict:
-    """Send a script to the decomposer agent and return the parsed response."""
-    response = await send_sync_message(
-        destination=DECOMPOSER_ADDRESS,
-        message=DecomposeRequest(script=script, num_scenes=num_scenes),
-        timeout=60,
+    class Config:
+        extra = "ignore"
+
+# ------------------------------------------------------------------
+# LangChain Prompt + Gemini
+# ------------------------------------------------------------------
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", """
+You are an expert cinematic director and voiceover writer.
+
+Decompose the user’s cinematic script into exactly {num_scenes} sequential scenes.
+
+For each scene, generate:
+1. A highly detailed cinematic video prompt usable by a text-to-video model
+2. A natural voiceover script spoken in ~5 seconds (12–15 words)
+
+Rules:
+- Single coherent shot
+- Include environment, lighting, camera framing, camera motion, and mood
+- No narration, dialogue, text, questions, or numbering
+- Voiceover must match visuals
+"""),
+    ("human", "{script}")
+])
+
+llm = ChatGoogleGenerativeAI(
+    model="gemini-3-pro-preview",
+    api_key=GEMINI_API_KEY,
+    temperature=1.0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2,
+)
+
+structured_llm = llm.with_structured_output(DecomposeLLM)
+chain = prompt | structured_llm
+
+# ------------------------------------------------------------------
+# ElevenLabs helper
+# ------------------------------------------------------------------
+
+def generate_audio(text: str) -> str:
+    filename = f"{uuid.uuid4()}.mp3"
+    path = os.path.join(AUDIO_DIR, filename)
+
+    audio_stream = eleven.text_to_speech.convert(
+        voice_id="Gfpl8Yo74Is0W6cPUWWT",
+        text=text,
+        model_id="eleven_monolingual_v1",
     )
-    return parse_response(response)
 
+    with open(path, "wb") as f:
+        for chunk in audio_stream:
+            f.write(chunk)
 
-async def query_audio_agent(voiceover: str) -> str:
-    """Send a voiceover to the audio agent and return the audio_url."""
-    response = await send_sync_message(
-        destination=AUDIO_AGENT_ADDRESS,
-        message=AudioRequest(voiceover=voiceover),
-        timeout=60,
-    )
-    data = parse_response(response)
-    return data["audio_url"]
+    return f"/audio/{filename}"
 
-
-# ---------- Endpoint ----------
-
-class DecomposeHTTPRequest(BaseModel):
-    script: str
-    num_scenes: int = 5
-
+# ------------------------------------------------------------------
+# Endpoint
+# ------------------------------------------------------------------
 
 @app.post("/generate", response_model=DecomposeResponse)
-async def generate_video_and_audio(req: DecomposeHTTPRequest):
-    """
-    POST  {"script": "...", "num_scenes": 5}
-
-    num_scenes is optional — defaults to 5 if omitted.
-
-    1. Forwards the script + num_scenes to the scene_decomposer uAgent.
-    2. Fans out all N voiceovers to the audio_generator uAgent in parallel.
-    3. Zips the audio URLs back into the scenes and returns the full payload.
-    """
+def generate_video_and_audio(req: DecomposeRequest):
     if not req.script.strip():
         raise HTTPException(status_code=400, detail="Script cannot be empty")
-    if req.num_scenes < 1 or req.num_scenes > 20:
-        raise HTTPException(status_code=400, detail="num_scenes must be between 1 and 20")
 
-    try:
-        # 1. Decompose the script into N scenes
-        result = await query_decomposer(req.script, req.num_scenes)
-        scenes = result["scenes"]
-
-        # 2. Fire all N TTS calls concurrently
-        audio_urls = await asyncio.gather(
-            *(query_audio_agent(scene["voiceover"]) for scene in scenes)
+    if req.num_scenes < 1 or req.num_scenes > 12:
+        raise HTTPException(
+            status_code=400,
+            detail="num_scenes must be between 1 and 12",
         )
 
-        # 3. Merge and return
-        return {
-            "scenes": [
-                {
-                    "video_prompt": scene["video_prompt"],
-                    "voiceover": scene["voiceover"],
-                    "audio_url": url,
-                }
-                for scene, url in zip(scenes, audio_urls)
-            ]
-        }
+    try:
+        result: DecomposeLLM = chain.invoke({
+            "script": req.script,
+            "num_scenes": req.num_scenes,
+        })
+
+        # Hard guarantee exact count
+        scenes = result.scenes[:req.num_scenes]
+
+        scenes_with_audio: List[SceneResponse] = []
+
+        for scene in scenes:
+            audio_url = generate_audio(scene.voiceover)
+            scenes_with_audio.append(
+                SceneResponse(
+                    video_prompt=scene.video_prompt,
+                    voiceover=scene.voiceover,
+                    audio_url=audio_url,
+                )
+            )
+
+        return DecomposeResponse(scenes=scenes_with_audio)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
